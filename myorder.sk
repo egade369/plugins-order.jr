@@ -1,91 +1,575 @@
-# ----------------------------------------------------------
-# Part 1: Chat System (Translates [order] into a clickable button)
-# ----------------------------------------------------------
 options:
     prefix: &8[&e&lOrder&8] &7
 
-on chat:
-    if message contains "[order]":
-        cancel event
-        set {_msg} to message
-        replace all "[order]" with "" in {_msg}
-        replace all """" with "" in {_msg}
-        
-        if {_msg} is "":
-            set {_msg} to " "
-            
-        send formatted "&8[&4Order&8] &a%player%&f: %{_msg}% <command:/checkorder %player%><tooltip:&aClick to open active orders of &e%player%>&b&l(order)<reset>" to all players
-
-# ----------------------------------------------------------
-# Part 2: Specific Player Order Command (Fetches data from the main system)
-# ----------------------------------------------------------
-command /checkorder [<text>]:
+command /order:
     trigger:
-        if arg-1 is set:
-            set {_target} to arg-1
-            set {_gui} to chest inventory with 6 rows named "&8✦ &lOrders of: &n%{_target}%"
-            set {_glass} to black stained glass pane named "&7"
-            
-            # Decorate the GUI border with black glass
-            loop 9 times:
-                set slot loop-number - 1 of {_gui} to {_glass}
-                set slot (loop-number - 1) + 45 of {_gui} to {_glass}
-            set slot 9, 17, 18, 26, 27, 35, 36 and 44 of {_gui} to {_glass}
-            
-            set slot 49 of {_gui} to barrier named "&c&l✘ Close Window"
-            
-            # Search for active orders owned by the target player
-            delete {_targetOrders::*}
-            loop {orders::active::*}:
-                if {order::%loop-value%::owner_name} is {_target}:
-                    add loop-value to {_targetOrders::*}
-            
-            set {_slots::*} to 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42 and 43
-            
-            set {_added} to 0
-            loop {_targetOrders::*}:
-                add 1 to {_added}
-                if {_added} <= 28:
-                    set {_id} to loop-value
-                    set {_displayItem} to {order::%{_id}%::item}
-                    set {_req} to {order::%{_id}%::amount}
-                    set {_del} to {order::%{_id}%::delivered}
-                    set {_price} to {order::%{_id}%::price}
-                    
-                    set name of {_displayItem} to "&a&lOrder &8(#%{_id}%)"
-                    
-                    delete {_itemLore::*}
-                    add "&7&m                         &7" to {_itemLore::*}
-                    add "&7 ❖ Buyer: &f%{_target}%" to {_itemLore::*}
-                    add "&7 ❖ Progress: &a%{_del}% &7/ &c%{_req}%" to {_itemLore::*}
-                    add "&7 ❖ Price each: &e%formatNum({_price})%$" to {_itemLore::*}
-                    add "&7&m                         &7" to {_itemLore::*}
-                    add "&a&l✔ Click to deliver items" to {_itemLore::*}
-                    
-                    set lore of {_displayItem} to {_itemLore::*}
-                    set {_target_slot} to {_slots::%{_added}%}
-                    set slot {_target_slot} of {_gui} to {_displayItem}
-            
-            if size of {_targetOrders::*} is 0:
-                set slot 22 of {_gui} to paper named "&cThis player has no active buy orders."
-                
-            open {_gui} to player
-        else:
-            send "{@prefix}&cPlease specify a player name!" to player
+        openMainMenu(player, 1)
 
-# ----------------------------------------------------------
-# Part 3: Click Management System for Order Inspection GUI
-# ----------------------------------------------------------
+on load:
+    delete {cached::itemtypes::*}
+    loop all item types:
+        if loop-value is not air:
+            add loop-value to {cached::itemtypes::*}
+
+# ---------------------------------------------------------
+# Function to format numbers with commas (e.g. 1,000)
+# ---------------------------------------------------------
+function formatNum(n: number) :: text:
+    set {_s} to "%{_n}%"
+    set {_len} to length of {_s}
+    if {_len} > 3:
+        set {_res} to ""
+        set {_c} to 0
+        loop {_len} times:
+            set {_char} to character at ({_len} - loop-value + 1) of {_s}
+            if {_c} is 3:
+                set {_res} to ",%{_res}%"
+                set {_c} to 0
+            set {_res} to "%{_char}%%{_res}%"
+            add 1 to {_c}
+        return {_res}
+    return {_s}
+
+# ---------------------------------------------------------
+# 1. Main Menu (Global Order Marketplace)
+# ---------------------------------------------------------
+function openMainMenu(p: player, page: integer):
+    set {_gui} to chest inventory with 6 rows named "&8✦ &lOrder Menu &8(Page %{_page}%)"
+    set {_glass} to black stained glass pane named "&7"
+    
+    loop 9 times:
+        set slot loop-number - 1 of {_gui} to {_glass}
+        set slot (loop-number - 1) + 45 of {_gui} to {_glass}
+    set slot 9, 17, 18, 26, 27, 35, 36 and 44 of {_gui} to {_glass}
+    
+    set {_sort} to {player::sort::%{_p}'s uuid%}
+    if {_sort} is not set:
+        set {_sort} to "Newest"
+        set {player::sort::%{_p}'s uuid%} to "Newest"
+
+    set {_l1} to "&7▪ NAME (A-Z)"
+    set {_l2} to "&7▪ NAME (Z-A)"
+    set {_l3} to "&7▪ LOW PRICE"
+    set {_l4} to "&7▪ HIGH PRICE"
+    set {_l5} to "&7▪ NEWEST"
+    set {_l6} to "&7▪ OLDEST"
+
+    if {_sort} is "Name (A-Z)":
+        set {_l1} to "&a✔ NAME (A-Z)"
+    else if {_sort} is "Name (Z-A)":
+        set {_l2} to "&a✔ NAME (Z-A)"
+    else if {_sort} is "Low Price":
+        set {_l3} to "&a✔ LOW PRICE"
+    else if {_sort} is "High Price":
+        set {_l4} to "&a✔ HIGH PRICE"
+    else if {_sort} is "Newest":
+        set {_l5} to "&a✔ NEWEST"
+    else if {_sort} is "Oldest":
+        set {_l6} to "&a✔ OLDEST"
+
+    delete {_sortLore::*}
+    add {_l1} to {_sortLore::*}
+    add {_l2} to {_sortLore::*}
+    add {_l3} to {_sortLore::*}
+    add {_l4} to {_sortLore::*}
+    add {_l5} to {_sortLore::*}
+    add {_l6} to {_sortLore::*}
+    add "" to {_sortLore::*}
+    add "&eClick to cycle sorting order" to {_sortLore::*}
+
+    set slot 47 of {_gui} to anvil named "&6&l⚡ SORT ⚡" with lore {_sortLore::*}
+    set slot 48 of {_gui} to compass named "&b&l🧭 Refresh Menu" with lore "&7Click to refresh market data"
+    set slot 49 of {_gui} to map named "&a&l✚ Create Order" with lore "&7Click to select item to buy (Max 5)"
+    set slot 50 of {_gui} to chest named "&d&l📋 Your Orders" with lore "&7Click to view and manage your orders"
+    set slot 45 of {_gui} to arrow named "&b&l⬅ Previous Page"
+    set slot 53 of {_gui} to arrow named "&b&lNext Page ➡"
+    
+    delete {_activeOrders::*}
+    loop {orders::active::*}:
+        set {_id} to loop-value
+        set {_req} to {order::%{_id}%::amount}
+        set {_del} to {order::%{_id}%::delivered}
+        
+        set {_timeCreated} to {order::%{_id}%::time}
+        if {_timeCreated} is not set:
+            set {_timeCreated} to now
+            set {order::%{_id}%::time} to now
+        set {_expireTime} to {_timeCreated}
+        add 3 days to {_expireTime}
+        
+        if {_del} < {_req}:
+            if now is less than {_expireTime}:
+                add {_id} to {_activeOrders::*}
+
+    delete {_sorted::*}
+    if {_sort} is "Newest":
+        loop {_activeOrders::*}:
+            add loop-value to {_sorted::*}
+        set {_sorted::*} to reversed {_sorted::*}
+    else if {_sort} is "Oldest":
+        loop {_activeOrders::*}:
+            add loop-value to {_sorted::*}
+    else if {_sort} is "Low Price":
+        loop {_activeOrders::*}:
+            set {_id} to loop-value
+            set {_val} to {order::%{_id}%::price}
+            set {_temp::%{_val}%-%{_id}%} to {_id}
+        loop sorted indices of {_temp::*}:
+            add {_temp::%loop-value%} to {_sorted::*}
+    else if {_sort} is "High Price":
+        loop {_activeOrders::*}:
+            set {_id} to loop-value
+            set {_val} to {order::%{_id}%::price}
+            set {_temp::%{_val}%-%{_id}%} to {_id}
+        loop reversed sorted indices of {_temp::*}:
+            add {_temp::%loop-value%} to {_sorted::*}
+    else if {_sort} is "Name (A-Z)":
+        loop {_activeOrders::*}:
+            set {_id} to loop-value
+            set {_item_name} to uncolored name of {order::%{_id}%::item}
+            set {_temp::%{_item_name}%-%{_id}%} to {_id}
+        loop sorted indices of {_temp::*}:
+            add {_temp::%loop-value%} to {_sorted::*}
+    else if {_sort} is "Name (Z-A)":
+        loop {_activeOrders::*}:
+            set {_id} to loop-value
+            set {_item_name} to uncolored name of {order::%{_id}%::item}
+            set {_temp::%{_item_name}%-%{_id}%} to {_id}
+        loop reversed sorted indices of {_temp::*}:
+            add {_temp::%loop-value%} to {_sorted::*}
+
+    set {_slots::1} to 10
+    set {_slots::2} to 11
+    set {_slots::3} to 12
+    set {_slots::4} to 13
+    set {_slots::5} to 14
+    set {_slots::6} to 15
+    set {_slots::7} to 16
+    set {_slots::8} to 19
+    set {_slots::9} to 20
+    set {_slots::10} to 21
+    set {_slots::11} to 22
+    set {_slots::12} to 23
+    set {_slots::13} to 24
+    set {_slots::14} to 25
+    set {_slots::15} to 28
+    set {_slots::16} to 29
+    set {_slots::17} to 30
+    set {_slots::18} to 31
+    set {_slots::19} to 32
+    set {_slots::20} to 33
+    set {_slots::21} to 34
+    set {_slots::22} to 37
+    set {_slots::23} to 38
+    set {_slots::24} to 39
+    set {_slots::25} to 40
+    set {_slots::26} to 41
+    set {_slots::27} to 42
+    set {_slots::28} to 43
+
+    set {_count} to 0
+    set {_start} to ({_page} - 1) * 28
+    set {_end} to {_page} * 28
+    set {_added} to 0
+    
+    loop {_sorted::*}:
+        add 1 to {_count}
+        if {_count} > {_start}:
+            if {_count} <= {_end}:
+                add 1 to {_added}
+                set {_id} to loop-value
+                
+                set {_displayItem} to {order::%{_id}%::item}
+                set {_req} to {order::%{_id}%::amount}
+                set {_del} to {order::%{_id}%::delivered}
+                set {_price} to {order::%{_id}%::price}
+                set {_owner} to {order::%{_id}%::owner_name}
+                
+                set {_timeCreated} to {order::%{_id}%::time}
+                if {_timeCreated} is not set:
+                    set {_timeCreated} to now
+                    set {order::%{_id}%::time} to now
+                set {_expireTime} to {_timeCreated}
+                add 3 days to {_expireTime}
+                
+                set name of {_displayItem} to "&a&lOrder &8(#%{_id}%)"
+                
+                delete {_itemLore::*}
+                add "&7&m                         &7" to {_itemLore::*}
+                add "&7 ❖ Buyer: &f%{_owner}%" to {_itemLore::*}
+                add "&7 ❖ Progress: &a%{_del}% &7/ &c%{_req}%" to {_itemLore::*}
+                add "&7 ❖ Price/Each: &e$%formatNum({_price})%" to {_itemLore::*}
+                
+                set {_diff} to difference between now and {_expireTime}
+                set {_secs} to {_diff} / 1 second
+                if {_secs} is not set:
+                    set {_secs} to 0
+                set {_hours} to floor({_secs} / 3600)
+                set {_rem} to {_secs} - ({_hours} * 3600)
+                set {_mins} to floor({_rem} / 60)
+                
+                set {_timeFormatted} to "%{_hours}%h %{_mins}%m"
+
+                add "&7 ❖ Expires in: &c%{_timeFormatted}%" to {_itemLore::*}
+                add "&7&m                         &7" to {_itemLore::*}
+                add "&a&l✔ Click to deliver items" to {_itemLore::*}
+                
+                set lore of {_displayItem} to {_itemLore::*}
+                
+                set {_target_slot} to {_slots::%{_added}%}
+                set slot {_target_slot} of {_gui} to {_displayItem}
+        if {_count} > {_end}:
+            stop loop
+
+    set {gui::main_page::%{_p}'s uuid%} to {_page}
+    open {_gui} to {_p}
+
+# ---------------------------------------------------------
+# Delivery Box GUI (5 rows, 36 item slots + confirm button)
+# ---------------------------------------------------------
+function openSellChest(p: player, id: integer):
+    set {_gui} to chest inventory with 5 rows named "&8✦ &lDeliver Items &8(#%{_id}%)"
+    set {_glass} to black stained glass pane named "&7"
+    
+    loop 6 times:
+        set slot (loop-number - 1) + 36 of {_gui} to {_glass}
+    
+    set slot 42 of {_gui} to emerald block named "&a&l✔ Confirm Delivery" with lore "&7Click to deliver items and receive payment"
+    set slot 43 of {_gui} to {_glass}
+    set slot 44 of {_gui} to barrier named "&c&l✘ Cancel / Back to Menu"
+    
+    set {gui::sell_chest_id::%{_p}'s uuid%} to {_id}
+    delete {gui::confirmed_sell::%{_p}'s uuid%}
+    open {_gui} to {_p}
+
+# ---------------------------------------------------------
+# 2. "Your Orders" GUI
+# ---------------------------------------------------------
+function openMyOrders(p: player, page: integer):
+    set {_gui} to chest inventory with 6 rows named "&8✦ &lYour Orders &8(Page %{_page}%)"
+    set {_glass} to black stained glass pane named "&7"
+    
+    loop 9 times:
+        set slot loop-number - 1 of {_gui} to {_glass}
+        set slot (loop-number - 1) + 45 of {_gui} to {_glass}
+    set slot 9, 17, 18, 26, 27, 35, 36 and 44 of {_gui} to {_glass}
+    
+    set slot 49 of {_gui} to barrier named "&c&l✘ Back to Menu"
+    set slot 45 of {_gui} to arrow named "&b&l⬅ Previous Page"
+    set slot 53 of {_gui} to arrow named "&b&lNext Page ➡"
+        
+    delete {_myorders::*}
+    loop {orders::active::*}:
+        set {_id} to loop-value
+        if {order::%{_id}%::owner} is {_p}'s uuid:
+            add {_id} to {_myorders::*}
+            set {_req} to {order::%{_id}%::amount}
+            set {_del} to {order::%{_id}%::delivered}
+            if {_del} >= {_req}:
+                if {order::%{_id}%::notified} is not set:
+                    set {order::%{_id}%::notified} to true
+                    send "{@prefix}&a🎉 Your order ##%{_id}% has been fulfilled! Click to collect your items." to {_p}
+
+    set {_slots::1} to 10
+    set {_slots::2} to 11
+    set {_slots::3} to 12
+    set {_slots::4} to 13
+    set {_slots::5} to 14
+    set {_slots::6} to 15
+    set {_slots::7} to 16
+    set {_slots::8} to 19
+    set {_slots::9} to 20
+    set {_slots::10} to 21
+    set {_slots::11} to 22
+    set {_slots::12} to 23
+    set {_slots::13} to 24
+    set {_slots::14} to 25
+    set {_slots::15} to 28
+    set {_slots::16} to 29
+    set {_slots::17} to 30
+    set {_slots::18} to 31
+    set {_slots::19} to 32
+    set {_slots::20} to 33
+    set {_slots::21} to 34
+    set {_slots::22} to 37
+    set {_slots::23} to 38
+    set {_slots::24} to 39
+    set {_slots::25} to 40
+    set {_slots::26} to 41
+    set {_slots::27} to 42
+    set {_slots::28} to 43
+
+    set {_count} to 0
+    set {_start} to ({_page} - 1) * 28
+    set {_end} to {_page} * 28
+    set {_added} to 0
+    
+    loop {_myorders::*}:
+        add 1 to {_count}
+        if {_count} > {_start}:
+            if {_count} <= {_end}:
+                add 1 to {_added}
+                set {_id} to loop-value
+                
+                set {_displayItem} to {order::%{_id}%::item}
+                set {_req} to {order::%{_id}%::amount}
+                set {_del} to {order::%{_id}%::delivered}
+                set {_price} to {order::%{_id}%::price}
+                
+                set name of {_displayItem} to "&a&lManage Order &8(#%{_id}%)"
+                
+                delete {_myLore::*}
+                add "&7&m                         &7" to {_myLore::*}
+                add "&7 ❖ Requested: &c%{_req}%" to {_myLore::*}
+                add "&7 ❖ Delivered: &a%{_del}%" to {_myLore::*}
+                add "&7 ❖ Price/Each: &e$%formatNum({_price})%" to {_myLore::*}
+                add "&7&m                         &7" to {_myLore::*}
+                if {_del} >= {_req}:
+                    add "&a&l✔ Complete! Click to collect items" to {_myLore::*}
+                else:
+                    add "&e&lClick to manage / collect items" to {_myLore::*}
+                
+                set lore of {_displayItem} to {_myLore::*}
+                
+                set {_target_slot} to {_slots::%{_added}%}
+                set slot {_target_slot} of {_gui} to {_displayItem}
+        if {_count} > {_end}:
+            stop loop
+
+    if size of {_myorders::*} is 0:
+        set slot 22 of {_gui} to paper named "&cYou have no active orders"
+
+    set {gui::my_page::%{_p}'s uuid%} to {_page}
+    open {_gui} to {_p}
+
+# ---------------------------------------------------------
+# 3. Single Order Management GUI
+# ---------------------------------------------------------
+function openManageOrder(p: player, id: integer):
+    set {_gui} to chest inventory with 6 rows named "&8✦ &lManage Order &8(#%{_id}%)"
+    set {_glass} to black stained glass pane named "&7"
+    loop 54 times:
+        set slot loop-number - 1 of {_gui} to {_glass}
+        
+    if {orders::active::*} does not contain {_id}:
+        send "&8[&e&lOrder&8] &cThis order has been cancelled!" to {_p}
+        close {_p}'s inventory
+        stop
+        
+    set {_displayItem} to {order::%{_id}%::item}
+    set {_req} to {order::%{_id}%::amount}
+    set {_del} to {order::%{_id}%::delivered}
+    set {_price} to {order::%{_id}%::price}
+    
+    set name of {_displayItem} to "&a&lDelivered Items: &f%{_del}% &e/ &f%{_req}%"
+    
+    delete {_manageLore::*}
+    add "&7(Order #%{_id}%)" to {_manageLore::*}
+    set lore of {_displayItem} to {_manageLore::*}
+    
+    set slot 22 of {_gui} to {_displayItem}
+    
+    set slot 48 of {_gui} to hopper named "&a&l📥 Collect Items" with lore "&7Click to collect items into inventory"
+    
+    set {_currentTakeAmt} to {player::take_amt::%{_p}'s uuid%::%{_id}%}
+    if {_currentTakeAmt} is not set:
+        set {_currentTakeAmt} to 1
+
+    set {_t1} to "&7▪ 1"
+    set {_t2} to "&7▪ 5"
+    set {_t3} to "&7▪ 32"
+    set {_t4} to "&7▪ 64"
+    set {_t5} to "&7▪ 128"
+
+    if {_currentTakeAmt} is 1:
+        set {_t1} to "&a✔ 1"
+    else if {_currentTakeAmt} is 5:
+        set {_t2} to "&a✔ 5"
+    else if {_currentTakeAmt} is 32:
+        set {_t3} to "&a✔ 32"
+    else if {_currentTakeAmt} is 64:
+        set {_t4} to "&a✔ 64"
+    else if {_currentTakeAmt} is 128:
+        set {_t5} to "&a✔ 128"
+
+    delete {_takeLore::*}
+    add {_t1} to {_takeLore::*}
+    add {_t2} to {_takeLore::*}
+    add {_t3} to {_takeLore::*}
+    add {_t4} to {_takeLore::*}
+    add {_t5} to {_takeLore::*}
+    add "" to {_takeLore::*}
+    add "&eClick to change collect amount" to {_takeLore::*}
+
+    set slot 47 of {_gui} to ghast tear named "&b&l💧 Select Collect Amount" with lore {_takeLore::*}
+
+    set {_currentDropAmt} to {player::drop_amt::%{_p}'s uuid%::%{_id}%}
+    if {_currentDropAmt} is not set:
+        set {_currentDropAmt} to 1
+
+    set {_d1} to "&7▪ 1"
+    set {_d2} to "&7▪ 5"
+    set {_d3} to "&7▪ 32"
+    set {_d4} to "&7▪ 64"
+    set {_d5} to "&7▪ 128"
+
+    if {_currentDropAmt} is 1:
+        set {_d1} to "&a✔ 1"
+    else if {_currentDropAmt} is 5:
+        set {_d2} to "&a✔ 5"
+    else if {_currentDropAmt} is 32:
+        set {_d3} to "&a✔ 32"
+    else if {_currentDropAmt} is 64:
+        set {_d4} to "&a✔ 64"
+    else if {_currentDropAmt} is 128:
+        set {_d5} to "&a✔ 128"
+
+    delete {_tearLore::*}
+    add {_d1} to {_tearLore::*}
+    add {_d2} to {_tearLore::*}
+    add {_d3} to {_tearLore::*}
+    add {_d4} to {_tearLore::*}
+    add {_d5} to {_tearLore::*}
+    add "" to {_tearLore::*}
+    add "&eClick to change drop amount" to {_tearLore::*}
+
+    set slot 51 of {_gui} to ghast tear named "&b&l💧 Select Drop Amount" with lore {_tearLore::*}
+    
+    set slot 50 of {_gui} to dropper named "&c&l📤 Drop on Ground" with lore "&7Click to drop items on the ground in front of you"
+    
+    set slot 49 of {_gui} to barrier named "&c&lCancel Order / Close" with lore "&7Refunds remaining deposit for undelivered items"
+    set slot 45 of {_gui} to arrow named "&b&l⬅ Previous Page"
+    
+    set {gui::manage_id::%{_p}'s uuid%} to {_id}
+    open {_gui} to {_p}
+
+# ---------------------------------------------------------
+# 4. Item Selector GUI
+# ---------------------------------------------------------
+function openItemSelector(p: player, page: integer, query: text):
+    set {_gui} to chest inventory with 6 rows named "&8✦ &lSelect Item &8(Page %{_page}%)"
+    
+    loop 9 times:
+        set slot (loop-number - 1) + 45 of {_gui} to black stained glass pane named "&7"
+        
+    set slot 45 of {_gui} to arrow named "&b&l⬅ Previous Page"
+    set slot 46 of {_gui} to compass named "&e&l🔍 Search Item" with lore "&7Click to type item name in chat"
+    set slot 49 of {_gui} to barrier named "&c&l✘ Back to Menu"
+    set slot 53 of {_gui} to arrow named "&b&lNext Page ➡"
+    
+    delete {_items::*}
+    if {_query} is not set:
+        loop {cached::itemtypes::*}:
+            add loop-value to {_items::*}
+    else if {_query} is "":
+        loop {cached::itemtypes::*}:
+            add loop-value to {_items::*}
+    else:
+        set {_q} to lowercase {_query}
+        loop {cached::itemtypes::*}:
+            set {_raw} to lowercase "%loop-value%"
+            replace all "minecraft:" with "" in {_raw}
+            replace all "_" with " " in {_raw}
+            if {_raw} contains {_q}:
+                add loop-value to {_items::*}
+
+    set {_count} to 0
+    set {_start} to ({_page} - 1) * 45
+    set {_end} to {_page} * 45
+    set {_added} to 0
+    
+    loop {_items::*}:
+        add 1 to {_count}
+        if {_count} > {_start}:
+            if {_count} <= {_end}:
+                add 1 to {_added}
+                set slot {_added} - 1 of {_gui} to loop-value
+        
+        if {_added} >= 45:
+            stop loop
+                
+    set {gui::sel_page::%{_p}'s uuid%} to {_page}
+    set {gui::sel_query::%{_p}'s uuid%} to {_query}
+    open {_gui} to {_p}
+
+# ---------------------------------------------------------
+# GUI Click Handling
+# ---------------------------------------------------------
 on inventory click:
     set {_invName} to uncolored name of event-inventory
-    # Intercept order inspection GUIs
-    if {_invName} contains "Orders of:":
+
+    # --- 1. Main Menu ---
+    if {_invName} contains "Order Menu":
         cancel event
         if clicked inventory is player's inventory:
             stop
             
+        if clicked slot is 45:
+            set {_page} to {gui::main_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            if {_page} > 1:
+                openMainMenu(player, {_page} - 1)
+            stop
+        if clicked slot is 53:
+            set {_page} to {gui::main_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            openMainMenu(player, {_page} + 1)
+            stop
+            
+        if clicked slot is 47:
+            set {_curr} to {player::sort::%player's uuid%}
+            set {_modes::1} to "Name (A-Z)"
+            set {_modes::2} to "Name (Z-A)"
+            set {_modes::3} to "Low Price"
+            set {_modes::4} to "High Price"
+            set {_modes::5} to "Newest"
+            set {_modes::6} to "Oldest"
+            
+            set {_idx} to 1
+            loop 6 times:
+                if {_modes::%loop-value%} is {_curr}:
+                    set {_idx} to loop-value
+                    stop loop
+            
+            if click type is left mouse button:
+                add 1 to {_idx}
+                if {_idx} > 6:
+                    set {_idx} to 1
+            else if click type is right mouse button:
+                subtract 1 from {_idx}
+                if {_idx} < 1:
+                    set {_idx} to 6
+            
+            set {player::sort::%player's uuid%} to {_modes::%{_idx}%}
+            set {_page} to {gui::main_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            openMainMenu(player, {_page})
+            stop
+
+        if clicked slot is 48:
+            set {_page} to {gui::main_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            openMainMenu(player, {_page})
+            send "{@prefix}&a🔄 Market data refreshed successfully!"
+            stop
+            
         if clicked slot is 49:
-            close player's inventory
+            set {_myActiveCount} to 0
+            loop {orders::active::*}:
+                if {order::%loop-value%::owner} is player's uuid:
+                    add 1 to {_myActiveCount}
+            if {_myActiveCount} >= 5:
+                send "{@prefix}&cYou have reached the limit of 5 active orders!"
+                stop
+            openItemSelector(player, 1, "")
+            stop
+            
+        if clicked slot is 50:
+            openMyOrders(player, 1)
             stop
             
         set {_name} to uncolored name of event-item
@@ -95,7 +579,7 @@ on inventory click:
             replace all " ❖ Buyer: " with "" in {_line}
             
             if {_line} is player's name:
-                send "{@prefix}&cYou cannot sell items to your own order!" to player
+                send "{@prefix}&cYou cannot deliver items to your own order!"
                 stop
                 
             set {_id_raw} to {_name}
@@ -103,6 +587,498 @@ on inventory click:
             replace all ")" with "" in {_id_raw}
             set {_id} to {_id_raw} parsed as integer
             
-            # Open the 5-row delivery chest from your main system
+            set {_timeCreated} to {order::%{_id}%::time}
+            if {_timeCreated} is not set:
+                set {_timeCreated} to now
+            set {_expireTime} to {_timeCreated}
+            add 3 days to {_expireTime}
+            
+            if now is greater than or equal to {_expireTime}:
+                send "{@prefix}&cThis order has expired (> 3 days) and can no longer accept deliveries!"
+                set {_page} to {gui::main_page::%player's uuid%}
+                if {_page} is not set:
+                    set {_page} to 1
+                openMainMenu(player, {_page})
+                stop
+
             openSellChest(player, {_id})
         stop
+
+    # --- Delivery Box GUI ---
+    else if {_invName} contains "Deliver Items":
+        # Cancel button (Slot 44)
+        if clicked slot is 44:
+            cancel event
+            set {gui::confirmed_sell::%player's uuid%} to true
+            close player's inventory
+            loop 36 times:
+                set {_slotIdx} to loop-number - 1
+                set {_itemInBox} to slot {_slotIdx} of event-inventory
+                if {_itemInBox} is set:
+                    if {_itemInBox} is not air:
+                        give {_itemInBox} to player
+                        set slot {_slotIdx} of event-inventory to air
+            set {_page} to {gui::main_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            openMainMenu(player, {_page})
+            stop
+            
+        # Confirm button (Slot 42)
+        if clicked slot is 42:
+            cancel event
+            set {gui::confirmed_sell::%player's uuid%} to true
+            
+            set {_id} to {gui::sell_chest_id::%player's uuid%}
+            
+            if {orders::active::*} does not contain {_id}:
+                send "{@prefix}&cThis order does not exist or has been cancelled!"
+                loop 36 times:
+                    set {_slotIdx} to loop-number - 1
+                    set {_itemInBox} to slot {_slotIdx} of event-inventory
+                    if {_itemInBox} is set:
+                        if {_itemInBox} is not air:
+                            give {_itemInBox} to player
+                            set slot {_slotIdx} of event-inventory to air
+                close player's inventory
+                set {_page} to {gui::main_page::%player's uuid%}
+                if {_page} is not set:
+                    set {_page} to 1
+                openMainMenu(player, {_page})
+                stop
+                
+            set {_item_type} to type of {order::%{_id}%::item}
+            set {_req} to {order::%{_id}%::amount}
+            set {_del} to {order::%{_id}%::delivered}
+            set {_needed} to {_req} - {_del}
+            
+            if {_needed} <= 0:
+                send "{@prefix}&cThis order has already been fully delivered!"
+                loop 36 times:
+                    set {_slotIdx} to loop-number - 1
+                    set {_itemInBox} to slot {_slotIdx} of event-inventory
+                    if {_itemInBox} is set:
+                        if {_itemInBox} is not air:
+                            give {_itemInBox} to player
+                            set slot {_slotIdx} of event-inventory to air
+                close player's inventory
+                set {_page} to {gui::main_page::%player's uuid%}
+                if {_page} is not set:
+                    set {_page} to 1
+                openMainMenu(player, {_page})
+                stop
+
+            set {_acceptedTotal} to 0
+            
+            loop 36 times:
+                set {_slotIndex} to loop-number - 1
+                set {_itemInSlot} to slot {_slotIndex} of event-inventory
+                
+                if {_itemInSlot} is set:
+                    if {_itemInSlot} is not air:
+                        if (type of {_itemInSlot}) is {_item_type}:
+                            set {_slotCount} to item amount of {_itemInSlot}
+                            
+                            if {_acceptedTotal} < {_needed}:
+                                set {_spaceLeft} to {_needed} - {_acceptedTotal}
+                                
+                                if {_slotCount} <= {_spaceLeft}:
+                                    add {_slotCount} to {_acceptedTotal}
+                                    set slot {_slotIndex} of event-inventory to air
+                                else:
+                                    add {_spaceLeft} to {_acceptedTotal}
+                                    set {_returnCount} to {_slotCount} - {_spaceLeft}
+                                    set item amount of {_itemInSlot} to {_returnCount}
+                                    give {_itemInSlot} to player
+                                    set slot {_slotIndex} of event-inventory to air
+                            else:
+                                give {_itemInSlot} to player
+                                set slot {_slotIndex} of event-inventory to air
+                        else:
+                            give {_itemInSlot} to player
+                            set slot {_slotIndex} of event-inventory to air
+
+            if {_acceptedTotal} > 0:
+                add {_acceptedTotal} to {order::%{_id}%::delivered}
+                set {_totalEarn} to {_acceptedTotal} * {order::%{_id}%::price}
+                add {_totalEarn} to player's balance
+                
+                set {_formattedEarn} to formatNum({_totalEarn})
+                set {_formattedAccepted} to formatNum({_acceptedTotal})
+                send "{@prefix}&aSuccessfully delivered &f%{_item_type}% &ax%{_formattedAccepted}%&a! Received &e$%{_formattedEarn}%"
+
+                set {_newDel} to {order::%{_id}%::delivered}
+                if {_newDel} >= {_req}:
+                    if {order::%{_id}%::notified} is not set:
+                        set {order::%{_id}%::notified} to true
+                        set {_ownerUUID} to {order::%{_id}%::owner}
+                        loop all players:
+                            if loop-player's uuid is {_ownerUUID}:
+                                send "{@prefix}&a🎉 Your order ##%{_id}% (&f%{_item_type}%&a) has been fully delivered! Type /order to collect." to loop-player
+            else:
+                send "{@prefix}&cNo matching items found for this order in the box!"
+
+            close player's inventory
+            set {_page} to {gui::main_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            openMainMenu(player, {_page})
+            stop
+
+        # Cancel clicking filler glass
+        if clicked slot is between 36 and 43:
+            cancel event
+            stop
+
+    # --- 2. Item Selector ---
+    else if {_invName} contains "Select Item":
+        cancel event
+        if clicked inventory is player's inventory:
+            stop
+            
+        set {_page} to {gui::sel_page::%player's uuid%}
+        if {_page} is not set:
+            set {_page} to 1
+        set {_query} to {gui::sel_query::%player's uuid%}
+        
+        if clicked slot is 49:
+            openMainMenu(player, 1)
+            stop
+            
+        if clicked slot is 46:
+            close player's inventory
+            set {gui::order_chat_mode::%player's uuid%} to "search"
+            send " "
+            send "{@prefix}&e➤ Please enter &bitem name &eto search in chat (e.g. sand, kelp)"
+            send "{@prefix}&c(Type cancel to abort)"
+            stop
+            
+        if clicked slot is 45:
+            if {_page} > 1:
+                openItemSelector(player, {_page} - 1, {_query})
+            stop
+            
+        if clicked slot is 53:
+            openItemSelector(player, {_page} + 1, {_query})
+            stop
+            
+        if clicked slot is less than 45:
+            if event-item is set:
+                set {_myActiveCount} to 0
+                loop {orders::active::*}:
+                    if {order::%loop-value%::owner} is player's uuid:
+                        add 1 to {_myActiveCount}
+                if {_myActiveCount} >= 5:
+                    send "{@prefix}&cYou have reached the limit of 5 active orders!"
+                    close player's inventory
+                    stop
+
+                set {_item} to 1 of event-item
+                close player's inventory
+                set {gui::setup_item::%player's uuid%} to "%{_item}%"
+                set {gui::order_chat_mode::%player's uuid%} to "amount"
+                send " "
+                send "{@prefix}&e➤ Please type the &bquantity &eyou want to purchase in chat"
+                send "{@prefix}&c(Type cancel to abort)"
+                stop
+
+    # --- 3. Your Orders ---
+    else if {_invName} contains "Your Orders":
+        cancel event
+        if clicked inventory is player's inventory:
+            stop
+            
+        if clicked slot is 45:
+            set {_page} to {gui::my_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            if {_page} > 1:
+                openMyOrders(player, {_page} - 1)
+            stop
+        if clicked slot is 53:
+            set {_page} to {gui::my_page::%player's uuid%}
+            if {_page} is not set:
+                set {_page} to 1
+            openMyOrders(player, {_page} + 1)
+            stop
+            
+        if clicked slot is 49:
+            openMainMenu(player, 1)
+            stop
+            
+        set {_name} to uncolored name of event-item
+        if {_name} contains "Manage Order":
+            set {_id_raw} to {_name}
+            replace all "Manage Order (#" with "" in {_id_raw}
+            replace all ")" with "" in {_id_raw}
+            set {_id} to {_id_raw} parsed as integer
+            openManageOrder(player, {_id})
+        stop
+
+    # --- 4. Single Order Management ---
+    else if {_invName} contains "Manage Order":
+        cancel event
+        if clicked inventory is player's inventory:
+            stop
+            
+        set {_id} to {gui::manage_id::%player's uuid%}
+        if {_id} is not set:
+            stop
+            
+        if {orders::active::*} does not contain {_id}:
+            send "{@prefix}&cThis order has been cancelled or already fulfilled!"
+            close player's inventory
+            stop
+            
+        set {_del} to {order::%{_id}%::delivered}
+        set {_req} to {order::%{_id}%::amount}
+        set {_item_type} to {order::%{_id}%::item}
+        
+        if clicked slot is 45:
+            openMyOrders(player, 1)
+            stop
+            
+        if clicked slot is 47:
+            set {_currentTake} to {player::take_amt::%player's uuid%::%{_id}%}
+            if {_currentTake} is not set:
+                set {_currentTake} to 1
+            
+            if {_currentTake} is 1:
+                set {player::take_amt::%player's uuid%::%{_id}%} to 5
+            else if {_currentTake} is 5:
+                set {player::take_amt::%player's uuid%::%{_id}%} to 32
+            else if {_currentTake} is 32:
+                set {player::take_amt::%player's uuid%::%{_id}%} to 64
+            else if {_currentTake} is 64:
+                set {player::take_amt::%player's uuid%::%{_id}%} to 128
+            else:
+                set {player::take_amt::%player's uuid%::%{_id}%} to 1
+                
+            openManageOrder(player, {_id})
+            stop
+
+        if clicked slot is 48:
+            if {_del} > 0:
+                set {_setting} to {player::take_amt::%player's uuid%::%{_id}%}
+                if {_setting} is not set:
+                    set {_setting} to 1
+                
+                set {_takeAmount} to {_setting}
+                if {_takeAmount} > {_del}:
+                    set {_takeAmount} to {_del}
+                
+                if {_takeAmount} <= 0:
+                    send "{@prefix}&cNo items available to collect!"
+                    stop
+
+                give {_takeAmount} of {_item_type} to player
+                subtract {_takeAmount} from {order::%{_id}%::delivered}
+                subtract {_takeAmount} from {order::%{_id}%::amount}
+                send "{@prefix}&aCollected &f%{_item_type}% &ax%{_takeAmount}% &ainto your inventory!"
+                
+                if {order::%{_id}%::amount} <= 0:
+                    remove {_id} from {orders::active::*}
+                    clear {order::%{_id}%::*}
+                    send "{@prefix}&aOrder fully collected and closed automatically!"
+                    close player's inventory
+                    stop
+                
+                openManageOrder(player, {_id})
+            else:
+                send "{@prefix}&cNo items available to collect!"
+            stop
+                
+        if clicked slot is 51:
+            set {_current} to {player::drop_amt::%player's uuid%::%{_id}%}
+            if {_current} is not set:
+                set {_current} to 1
+            
+            if {_current} is 1:
+                set {player::drop_amt::%player's uuid%::%{_id}%} to 5
+            else if {_current} is 5:
+                set {player::drop_amt::%player's uuid%::%{_id}%} to 32
+            else if {_current} is 32:
+                set {player::drop_amt::%player's uuid%::%{_id}%} to 64
+            else if {_current} is 64:
+                set {player::drop_amt::%player's uuid%::%{_id}%} to 128
+            else:
+                set {player::drop_amt::%player's uuid%::%{_id}%} to 1
+                
+            openManageOrder(player, {_id})
+            stop
+
+        # Drop items on ground 1m in front of player
+        if clicked slot is 50:
+            if {_del} > 0:
+                set {_setting} to {player::drop_amt::%player's uuid%::%{_id}%}
+                if {_setting} is not set:
+                    set {_setting} to 1
+                
+                set {_dropAmount} to {_setting}
+                if {_dropAmount} > {_del}:
+                    set {_dropAmount} to {_del}
+                
+                if {_dropAmount} <= 0:
+                    send "{@prefix}&cNo items available to drop!"
+                    stop
+
+                subtract {_dropAmount} from {order::%{_id}%::delivered}
+                subtract {_dropAmount} from {order::%{_id}%::amount}
+                
+                set {_dropLoc} to location 1 meter in front of player
+                add 1 to y-coordinate of {_dropLoc}
+                drop {_dropAmount} of {_item_type} at {_dropLoc}
+                
+                send "{@prefix}&aDropped &f%{_item_type}% &ax%{_dropAmount}% &aon the ground in front of you!"
+                
+                if {order::%{_id}%::amount} <= 0:
+                    remove {_id} from {orders::active::*}
+                    clear {order::%{_id}%::*}
+                    send "{@prefix}&aOrder fully collected and closed automatically!"
+                    close player's inventory
+                    stop
+                
+                openManageOrder(player, {_id})
+            else:
+                send "{@prefix}&cNo items available to drop!"
+            stop
+                
+        # Prevent cancel if undelivered/uncollected items remain
+        if clicked slot is 49:
+            if {_del} > 0:
+                send "{@prefix}&cPlease collect or drop all remaining items before cancelling this order!"
+                stop
+
+            remove {_id} from {orders::active::*}
+            
+            set {_remain} to {_req} - {_del}
+            if {_remain} < 0:
+                set {_remain} to 0
+            set {_refund} to {_remain} * {order::%{_id}%::price}
+            
+            if {_refund} > 0:
+                add {_refund} to player's balance
+            
+            clear {order::%{_id}%::*}
+            send "{@prefix}&cOrder cancelled successfully! Refunded remaining deposit: &e$%formatNum({_refund})%"
+            close player's inventory
+            stop
+
+# ---------------------------------------------------------
+# Anti-Item-Loss system when GUI is closed (ESC)
+# ---------------------------------------------------------
+on inventory close:
+    set {_invName} to uncolored name of event-inventory
+    if {_invName} contains "Deliver Items":
+        set {_confirmed} to {gui::confirmed_sell::%player's uuid%}
+        delete {gui::confirmed_sell::%player's uuid%}
+        
+        if {_confirmed} is set:
+            stop
+            
+        loop 36 times:
+            set {_slotIndex} to loop-number - 1
+            set {_itemInSlot} to slot {_slotIndex} of event-inventory
+            if {_itemInSlot} is set:
+                if {_itemInSlot} is not air:
+                    give {_itemInSlot} to player
+                    set slot {_slotIndex} of event-inventory to air
+
+# ---------------------------------------------------------
+# Chat Input Handling
+# ---------------------------------------------------------
+on chat:
+    set {_mode} to {gui::order_chat_mode::%player's uuid%}
+    if {_mode} is set:
+        cancel event
+        
+        if message is "cancel":
+            clear {gui::order_chat_mode::%player's uuid%}
+            clear {gui::setup_item::%player's uuid%}
+            clear {gui::setup_amount::%player's uuid%}
+            clear {gui::sell_order_id::%player's uuid%}
+            send "{@prefix}&cTransaction cancelled!"
+            stop
+            
+        if {_mode} is "search":
+            clear {gui::order_chat_mode::%player's uuid%}
+            if message is not set:
+                openItemSelector(player, 1, "")
+            else if message is "":
+                openItemSelector(player, 1, "")
+            else:
+                openItemSelector(player, 1, lowercase message)
+                send "{@prefix}&a🔍 Search: &e%message%"
+                
+        else if {_mode} is "amount":
+            set {_amt} to message parsed as integer
+            if {_amt} is not set:
+                send "{@prefix}&cPlease enter a valid &enumber &conly!"
+                stop
+            if {_amt} <= 0:
+                send "{@prefix}&cQuantity must be greater than 0!"
+                stop
+                
+            set {gui::setup_amount::%player's uuid%} to "%{_amt}%"
+            set {gui::order_chat_mode::%player's uuid%} to "price"
+            set {_formattedAmt} to formatNum({_amt})
+            send "{@prefix}&a✅ Quantity: &b%{_formattedAmt}% items"
+            send "{@prefix}&e➤ Please enter &6price per item &e(number) in chat"
+            send "{@prefix}&c(Type cancel to abort)"
+            
+        else if {_mode} is "price":
+            set {_price} to message parsed as number
+            if {_price} is not set:
+                send "{@prefix}&cPlease enter a valid &enumber &conly!"
+                stop
+            if {_price} <= 0:
+                send "{@prefix}&cPrice must be greater than 0!"
+                stop
+            if {_price} > 1000000000:
+                send "{@prefix}&cMaximum price cannot exceed &e$1,000,000,000&c!"
+                stop
+                
+            set {_myActiveCount} to 0
+            loop {orders::active::*}:
+                if {order::%loop-value%::owner} is player's uuid:
+                    add 1 to {_myActiveCount}
+            if {_myActiveCount} >= 5:
+                send "{@prefix}&cYou have reached the limit of 5 active orders!"
+                clear {gui::order_chat_mode::%player's uuid%}
+                clear {gui::setup_item::%player's uuid%}
+                clear {gui::setup_amount::%player's uuid%}
+                stop
+
+            set {_item_str} to {gui::setup_item::%player's uuid%}
+            set {_item} to {_item_str} parsed as item type
+            set {_amt_str} to {gui::setup_amount::%player's uuid%}
+            set {_amt} to {_amt_str} parsed as integer
+            
+            set {_total} to {_amt} * {_price}
+            if player's balance < {_total}:
+                set {_formattedTotal} to formatNum({_total})
+                send "{@prefix}&cYou do not have enough money! Required deposit: &e$%{_formattedTotal}%"
+                clear {gui::order_chat_mode::%player's uuid%}
+                clear {gui::setup_item::%player's uuid%}
+                clear {gui::setup_amount::%player's uuid%}
+                stop
+                
+            remove {_total} from player's balance
+            
+            set {_id} to random integer between 1000 and 9999
+            add {_id} to {orders::active::*}
+            set {order::%{_id}%::owner} to player's uuid
+            set {order::%{_id}%::owner_name} to player's name
+            set {order::%{_id}%::item} to {_item}
+            set {order::%{_id}%::amount} to {_amt}
+            set {order::%{_id}%::delivered} to 0
+            set {order::%{_id}%::price} to {_price}
+            set {order::%{_id}%::time} to now
+            
+            set {_formattedAmt} to formatNum({_amt})
+            set {_formattedPrice} to formatNum({_price})
+            broadcast "{@prefix}&e%player's name% &7is buying &f%{_item}% &ax%{_formattedAmt}% &7(&e$%{_formattedPrice}%/each) Type &b/order"
+            
+            clear {gui::order_chat_mode::%player's uuid%}
+            clear {gui::setup_item::%player's uuid%}
+            clear {gui::setup_amount::%player's uuid%}

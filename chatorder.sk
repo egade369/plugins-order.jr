@@ -1,0 +1,109 @@
+# ==========================================================
+# ✦ CHAT [order] & CUSTOM PARAMETER SYSTEM (FULL VERSION) ✦
+# ==========================================================
+
+# ----------------------------------------------------------
+# ส่วนที่ 1: ระบบแชท (แปลง [order] เป็นปุ่มคลิก)
+# ----------------------------------------------------------
+on chat:
+    if message contains "[order]":
+        cancel event
+        set {_msg} to message
+        replace all "[order]" with "" in {_msg}
+        replace all """" with "" in {_msg}
+        
+        if {_msg} is "":
+            set {_msg} to " "
+            
+        send formatted "&8[&4Order&8] &a%player%&f: %{_msg}% <command:/checkorder %player%><tooltip:&aคลิกเพื่อเปิดออเดอร์ของ &e%player%>&b&l(order)<reset>" to all players
+
+# ----------------------------------------------------------
+# ส่วนที่ 2: ระบบคำสั่งเปิดหน้าต่างเจาะจงชื่อ (ดึงข้อมูลจากระบบหลัก)
+# ----------------------------------------------------------
+command /checkorder [<text>]:
+    trigger:
+        if arg-1 is set:
+            set {_target} to arg-1
+            set {_gui} to chest inventory with 6 rows named "&8✦ &lออเดอร์ของ: &n%{_target}%"
+            set {_glass} to black stained glass pane named "&7"
+            
+            # ตกแต่งขอบหน้าต่างด้วยกระจกดำ
+            loop 9 times:
+                set slot loop-number - 1 of {_gui} to {_glass}
+                set slot (loop-number - 1) + 45 of {_gui} to {_glass}
+            set slot 9, 17, 18, 26, 27, 35, 36 and 44 of {_gui} to {_glass}
+            
+            set slot 49 of {_gui} to barrier named "&c&l✘ ปิดหน้าต่าง"
+            
+            # ค้นหาออเดอร์ที่เป็นของคนพิมพ์
+            delete {_targetOrders::*}
+            loop {orders::active::*}:
+                if {order::%loop-value%::owner_name} is {_target}:
+                    add loop-value to {_targetOrders::*}
+            
+            set {_slots::*} to 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42 and 43
+            
+            set {_added} to 0
+            loop {_targetOrders::*}:
+                add 1 to {_added}
+                if {_added} <= 28:
+                    set {_id} to loop-value
+                    set {_displayItem} to {order::%{_id}%::item}
+                    set {_req} to {order::%{_id}%::amount}
+                    set {_del} to {order::%{_id}%::delivered}
+                    set {_price} to {order::%{_id}%::price}
+                    
+                    set name of {_displayItem} to "&a&lออเดอร์ &8(#%{_id}%)"
+                    
+                    delete {_itemLore::*}
+                    add "&7&m                         &7" to {_itemLore::*}
+                    add "&7 ❖ ผู้รับซื้อ: &f%{_target}%" to {_itemLore::*}
+                    add "&7 ❖ จำนวน: &a%{_del}% &7/ &c%{_req}%" to {_itemLore::*}
+                    add "&7 ❖ ราคาชิ้นละ: &e%formatNum({_price})%$" to {_itemLore::*}
+                    add "&7&m                         &7" to {_itemLore::*}
+                    add "&a&l✔ คลิกเพื่อส่งไอเทม" to {_itemLore::*}
+                    
+                    set lore of {_displayItem} to {_itemLore::*}
+                    set {_target_slot} to {_slots::%{_added}%}
+                    set slot {_target_slot} of {_gui} to {_displayItem}
+            
+            if size of {_targetOrders::*} is 0:
+                set slot 22 of {_gui} to paper named "&cผู้เล่นคนนี้ไม่มีออเดอร์รับซื้อในขณะนี้"
+                
+            open {_gui} to player
+        else:
+            send "&8[&e&lOrder&8] &cโปรดระบุชื่อผู้เล่น!" to player
+
+# ----------------------------------------------------------
+# ส่วนที่ 3: ระบบจัดการการคลิกในหน้าต่างค้นหาออเดอร์
+# ----------------------------------------------------------
+on inventory click:
+    set {_invName} to uncolored name of event-inventory
+    # ดักจับหน้าต่างออเดอร์ที่เราเพิ่งสร้างขึ้นใหม่
+    if {_invName} contains "ออเดอร์ของ:":
+        cancel event
+        if clicked inventory is player's inventory:
+            stop
+            
+        if clicked slot is 49:
+            close player's inventory
+            stop
+            
+        set {_name} to uncolored name of event-item
+        if {_name} contains "ออเดอร์":
+            set {_lore::*} to uncolored lore of event-item
+            set {_line} to {_lore::2}
+            replace all " ❖ ผู้รับซื้อ: " with "" in {_line}
+            
+            if {_line} is player's name:
+                send "&8[&e&lOrder&8] &cคุณไม่สามารถขายของให้ออเดอร์ตัวเองได้!" to player
+                stop
+                
+            set {_id_raw} to {_name}
+            replace all "ออเดอร์ (#" with "" in {_id_raw}
+            replace all ")" with "" in {_id_raw}
+            set {_id} to {_id_raw} parsed as integer
+            
+            # สั่งเปิดกล่อง 5 แถวจากระบบหลักของคุณ
+            openSellChest(player, {_id})
+        stop

@@ -12,7 +12,7 @@ A growing collection of custom Minecraft Skript systems and ongoing projects, fe
 ---
 
 ## Requirements Plugin
- Skript
+ Skript and
  Vault (Required for economy transactions)
 
 ---

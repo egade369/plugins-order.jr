@@ -79,7 +79,9 @@ Developed and maintained by **egade369**.
 2. Download the latest egade_order.jar release.
 3. Place egade_order.jar into your server's plugins/ folder.
 4. Make sure you have **Vault.jar** and an economy plugin (e.g., **EssentialsX.jar**) installed in plugins/.
-5. Restart your server or run your server startup script (un.bat / un.sh).
+5. Restart your server or run your server startup script (
+un.bat / 
+un.sh).
 6. The configuration file and database will be generated automatically at plugins/egade_order/.
 
 ---
@@ -104,9 +106,9 @@ All main functionality is available through the /order command:
 The default configuration file is located at plugins/egade_order/config.yml:
 
 `yaml
-# ==============================================================================
+# ====================================
 #  egade_order - Plugin Configuration
-# ==============================================================================
+# ====================================
 
 # Chat prefix displayed before all system messages
 prefix: "&8[&6&lOrder&8] "

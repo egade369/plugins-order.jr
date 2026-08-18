@@ -1,5 +1,6 @@
-﻿# 📦 egade_order — Advanced Player Order Market System (no LICENSE to use)
+﻿# 📦 egade_order — Advanced Player Order Market System 
 
+(no LICENSE to use)
 ![Minecraft Version](https://img.shields.io/badge/Minecraft-26.2%20%7C%201.21.x-brightgreen?style=for-the-badge&logo=minecraft)
 ![Tested Platform](https://img.shields.io/badge/Tested%20On-Paper%2026.2-blue?style=for-the-badge)
 ![Java Version](https://img.shields.io/badge/Java-21%20%2F%2026%20%2B-orange?style=for-the-badge&logo=openjdk)

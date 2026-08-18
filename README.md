@@ -1,4 +1,4 @@
-﻿# 📦 egade_order — Advanced Player Order Market System
+﻿# 📦 egade_order — Advanced Player Order Market System (no LICENSE to use)
 
 ![Minecraft Version](https://img.shields.io/badge/Minecraft-26.2%20%7C%201.21.x-brightgreen?style=for-the-badge&logo=minecraft)
 ![Tested Platform](https://img.shields.io/badge/Tested%20On-Paper%2026.2-blue?style=for-the-badge)
@@ -99,50 +99,50 @@ All main functionality is available through the /order command:
 | /order setamount <quantity> | egade.order.use | Internal/chat helper to set quantity during order setup. |
 | /order setprice <price> | egade.order.use | Internal/chat helper to set unit price during order setup. |
 
----
+
 
 ## ⚙️ Configuration (config.yml)
 
 The default configuration file is located at plugins/egade_order/config.yml:
 
-`yaml
-# ====================================
-#  egade_order - Plugin Configuration
-# ====================================
+yaml
 
-# Chat prefix displayed before all system messages
-prefix: "&8[&6&lOrder&8] "
+##  egade_order - Plugin Configuration
 
-# Currency symbol used in GUI displays
-currency_symbol: "$"
 
-# Maximum number of active market orders a single player can maintain concurrently
-max_orders_per_player: 5
+### Chat prefix displayed before all system messages
+ prefix: "&8[&6&lOrder&8] "
 
-# Duration (in days) before an unfulfilled order is marked as expired
-order_expire_days: 3
+### Currency symbol used in GUI displays
+ currency_symbol: "$"
 
-# Whether to broadcast a clickable global announcement when a new order is posted
-broadcast_new_order: true
-`
+### Maximum number of active market orders a single player can maintain concurrently
+ max_orders_per_player: 5
 
----
+### Duration (in days) before an unfulfilled order is marked as expired
+ order_expire_days: 3
+
+### Whether to broadcast a clickable global announcement when a new order is posted
+ broadcast_new_order: true
+
+#
+#
 
 ## ❓ Frequently Asked Questions (FAQ)
 
-#### Q: What versions is this plugin tested on?
+### Q: What versions is this plugin tested on?
 **A:** This plugin was tested and confirmed working on **Minecraft / Paper 26.2** running **Java 26**.
 
-#### Q: What happens if my inventory is full when collecting items?
+### Q: What happens if my inventory is full when collecting items?
 **A:** Any items that cannot fit into your inventory will automatically be dropped safely at your feet.
 
-#### Q: Can players scam by canceling an order while someone is delivering?
+### Q: Can players scam by canceling an order while someone is delivering?
 **A:** No. All delivery calculations are performed atomically on inventory closure. If items are accepted, funds are instantly transferred via Vault, and the order progress updates immediately.
 
-#### Q: How does the [order] chat tag work?
+### Q: How does the [order] chat tag work?
 **A:** When any player who owns active market orders types [order] in public chat, the text is replaced with a styled button [ 📦 Order ]. Other players can click it to view and fulfill their orders directly.
 
----
+
 
 ## 📜 License & Terms of Use
 

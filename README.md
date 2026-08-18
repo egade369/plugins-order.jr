@@ -10,6 +10,16 @@
 (no LICENSE to use) **egade_order** is a modern, high-performance, asynchronous item purchasing and order market plugin built for Minecraft **Paper / Purpur 26.2 & 1.21.x** servers. It enables players to create custom buy-orders for any item, automatically hold deposited funds in an escrow vault, and allow sellers to fulfill orders through an interactive, drag-and-drop delivery chest.
 
 Developed and maintained by **egade369**.
+##
+
+<img width="841" height="498" alt="image" src="https://github.com/user-attachments/assets/16bb63ce-c9b8-4c56-8293-89287615b852" />
+<img width="688" height="309" alt="image" src="https://github.com/user-attachments/assets/16ab1965-d861-4ada-916d-eaa741db1c52" />
+<img width="690" height="497" alt="image" src="https://github.com/user-attachments/assets/2cc57da9-de04-4ae9-bb31-db4a7193711f" />
+<img width="949" height="492" alt="image" src="https://github.com/user-attachments/assets/d2656165-f89f-4bc4-b6f2-4e6ece1e0140" />
+<img width="691" height="297" alt="image" src="https://github.com/user-attachments/assets/6173f988-6290-405f-bfd3-ad97097569e2" />
+<img width="1305" height="336" alt="image" src="https://github.com/user-attachments/assets/97ccd5d8-9a06-4986-9f0a-9c42d3b4477d" />
+
+
 
 ---
 
